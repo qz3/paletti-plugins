@@ -119,7 +119,6 @@ def search(query):
     keys = ('url', 'title', 'thumbnail')
     for element in j['content']['search_results']['contents']:
         try:
-            print(element)
             ids.append(element['encrypted_id'])
             titles.append(element['title']['runs'][0]['text'])
             url = MAINHOST + element['endpoint']['url']

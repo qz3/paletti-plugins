@@ -116,17 +116,12 @@ def search(query):
     html_source = response.data.decode('utf-8')
     source = html_source[4:].replace('\\U', '\\u')
     j = json.loads(source, strict=False)
-    ids, titles, urls, thumbs, fails = [], [], [], [], []
-    keys = ('url', 'title', 'thumbnail')
+    types, titles, urls, thumbs = [], [], [], [], [], []
+    keys = ('type', 'title', 'url', 'thumbnail')
     for element in j['content']['search_results']['contents']:
-        print(element['item_type'])
-        try:
-            ids.append(element['encrypted_id'])
-            titles.append(element['title']['runs'][0]['text'])
-            url = MAINHOST + element['endpoint']['url']
-            urls.append(url)
-            thumbs.append(element['thumbnail_info']['url'])
-        except KeyError:
-            pass
-            #print(f'KeyError: couldnt deal with {element}')
-    return [dict(zip(keys, x)) for x in zip(urls, titles, thumbs)]
+        types.append(element['item_type'].replace('compact', ''))
+        titles.append(element['title']['runs'][0]['text'])
+        url = MAINHOST + element['endpoint']['url']
+        urls.append(url)
+        thumbs.append(element['thumbnail_info']['url'])
+    return [dict(zip(keys, x)) for x in zip(types, titles, urls, thumbs)]

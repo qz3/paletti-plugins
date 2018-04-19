@@ -7,6 +7,7 @@ import re
 import time
 import urllib
 import urllib3
+
 from urllib.parse import parse_qs
 
 import paletti.utils
@@ -118,6 +119,7 @@ def search(query):
     ids, titles, urls, thumbs, fails = [], [], [], [], []
     keys = ('url', 'title', 'thumbnail')
     for element in j['content']['search_results']['contents']:
+        print(element['item_type'])
         try:
             ids.append(element['encrypted_id'])
             titles.append(element['title']['runs'][0]['text'])
@@ -125,5 +127,6 @@ def search(query):
             urls.append(url)
             thumbs.append(element['thumbnail_info']['url'])
         except KeyError:
-            print(f'KeyError: couldnt deal with {element}')
+            pass
+            #print(f'KeyError: couldnt deal with {element}')
     return [dict(zip(keys, x)) for x in zip(urls, titles, thumbs)]

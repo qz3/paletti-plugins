@@ -116,7 +116,7 @@ def search(query):
     html_source = response.data.decode('utf-8')
     source = html_source[4:].replace('\\U', '\\u')
     j = json.loads(source, strict=False)
-    types, titles, urls, thumbs = [], [], [], [], [], []
+    types, titles, urls, thumbs = [], [], [], []
     keys = ('type', 'title', 'url', 'thumbnail')
     for element in j['content']['search_results']['contents']:
         types.append(element['item_type'].replace('compact', ''))

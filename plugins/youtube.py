@@ -119,7 +119,7 @@ def search(query):
     types, titles, urls, thumbs = [], [], [], []
     keys = ('type', 'title', 'url', 'thumbnail')
     for element in j['content']['search_results']['contents']:
-        types.append(element['item_type'].replace('compact', ''))
+        types.append(element['item_type'].replace('compact_', ''))
         titles.append(element['title']['runs'][0]['text'])
         url = MAINHOST + element['endpoint']['url']
         urls.append(url)

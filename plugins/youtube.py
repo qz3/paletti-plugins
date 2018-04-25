@@ -21,6 +21,7 @@ MOBILE_HEADERS = {'User-Agent': 'Mozilla/5.0 (Linux; Android 7.0; PLUS Build/'
                   'Accept-Encoding': 'gzip, deflate',
                   'Accept-Language': 'en'}
 MAINHOST = 'm.youtube.com'
+STREAM_TYPE = 'video/seperate' # video/seperate, video/combined, audio
 
 http_mainhost = urllib3.HTTPSConnectionPool(MAINHOST, headers=MOBILE_HEADERS)
 
@@ -94,6 +95,10 @@ def get_metadata(url):
             stream[key] = value
         type_ = stream['type'].split(';')[0]
         stream['type'], stream['container'] = type_.split('/')
+        try:
+            stream['quality'] = stream['quality_label']
+        except KeyError:
+            stream['quality'] = stream['bitrate']
         streams.append(stream)
     d['streams'] = streams
     # FIXME: this doesn't work. Get date elsewhere.

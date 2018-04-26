@@ -56,6 +56,7 @@ def get_metadata(url):
     :return: a dictionary holding the metadata
     """
     d = {}
+    d['url'] = url
     parsed_url = urllib3.util.url.parse_url(url)
     fields_ = GET_PARAMS
     query_data = re.split('[=&]', parsed_url.query)

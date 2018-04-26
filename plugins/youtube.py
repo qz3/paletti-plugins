@@ -15,6 +15,7 @@ import paletti.utils
 urllib3.disable_warnings()
 
 GET_PARAMS = {'layout': 'mobile', 'ajax': '1'}
+HOSTS = ['m.youtube.com', 'www.youtube.com']
 MOBILE_HEADERS = {'User-Agent': 'Mozilla/5.0 (Linux; Android 7.0; PLUS Build/'
                   'NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0'
                   '.3163.98 Mobile Safari/537.36',

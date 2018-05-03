@@ -117,6 +117,8 @@ def search(query):
     :param query: the search query.
     :return: a list of dicts for the search result.
     """
+    if not query.strip():
+        return []
     fields_ = GET_PARAMS
     fields_['q'] = query
     response = http_mainhost.request('GET', '/results', fields=fields_)
@@ -126,9 +128,15 @@ def search(query):
     types, titles, urls, thumbs = [], [], [], []
     keys = ('type', 'title', 'url', 'thumbnail')
     for element in j['content']['search_results']['contents']:
-        types.append(element['item_type'].replace('compact_', ''))
+        type_ = (element['item_type'])
+        if type_ in ['message', 'showing_results_for']:
+            continue
+        types.append(type_.replace('compact_', ''))
         titles.append(element['title']['runs'][0]['text'])
-        url = MAINHOST + element['endpoint']['url']
+        if 'endpoint' in element:
+            url = MAINHOST + element['endpoint']['url']
+        elif 'navigation_endpoint' in element:
+            url = MAINHOST + element['navigation_endpoint']['url']
         urls.append(url)
         thumbs.append(element['thumbnail_info']['url'])
     return [dict(zip(keys, x)) for x in zip(types, titles, urls, thumbs)]

@@ -1,21 +1,17 @@
 #!/usr/bin/env python
 
-""" Reference implementation """
+"""  """
 
 import html
 import json
-import lxml.etree
 import re
 import time
 import urllib
-import urllib3
-import urllib3.util
-
 from urllib.parse import parse_qs
 
-import paletti.utils
-
-urllib3.disable_warnings()
+import lxml.etree
+from urllib3 import HTTPSConnectionPool
+from urllib3.util import parse_url
 
 GET_PARAMS = {'layout': 'mobile', 'ajax': '1'}
 HOSTS = ['youtube.com', 'm.youtube.com', 'www.youtube.com']
@@ -25,22 +21,8 @@ MOBILE_HEADERS = {'User-Agent': 'Mozilla/5.0 (Linux; Android 7.0; PLUS Build/'
                   'Accept-Encoding': 'gzip, deflate',
                   'Accept-Language': 'en'}
 MAINHOST = 'https://m.youtube.com'
-STREAM_TYPE = 'video/seperate' # video/seperate, video/combined, audio
 
-http_mainhost = urllib3.HTTPSConnectionPool('m.youtube.com', headers=MOBILE_HEADERS)
-
-
-def download(url, path):
-    """ Download a file and return an instance providing status information.
-
-    :param url: the url of the file.
-    :param path: the local filepath.
-    :return: a `Download` instance.
-    """
-    dash_params = {'key': 'range', 'format': '-'}
-    dl = paletti.utils.Downloader(url, path, dash_params)
-    dl.start()
-    return dl
+http_mainhost = HTTPSConnectionPool('m.youtube.com', headers=MOBILE_HEADERS)
 
 
 def get_deep(dict_, *keys):
@@ -55,44 +37,55 @@ def get_deep(dict_, *keys):
 def get_metadata(url):
     """ Extract the metadata for a video.
 
-    :param url: the url.
-    :return: a dictionary holding the metadata
+    :param str url: the url.
+    :return: the metadata.
+    :rtype: dict
     """
-    d = {}
-    d['url'] = url
-    parsed_url = urllib3.util.url.parse_url(url)
+    d = {'url': url}
+    parsed_url = parse_url(url)
+    # Build the GET request, with the standard params and everything
+    # provided in `url` (mainly '?v=xXxXxXX')
     fields_ = GET_PARAMS
     query_data = re.split('[=&]', parsed_url.query)
     query = dict(zip(query_data[::2], query_data[1::2]))
     fields_.update(query)
     response = http_mainhost.request('GET', '/watch', fields=fields_)
+    # This is needed because youtube returns a broken json, starting
+    # with {[,[
     response = response.data.decode('utf-8')[4:].replace('\\U', '\\u')
     j = json.loads(response, strict=False)
 
+    # Extracting information
     vmc = get_deep(j, 'content', 'video_main_content', 'contents')[0]
     swf = get_deep(j, 'content', 'swfcfg', 'args')
-
     d['duration'] = get_deep(j, 'content', 'video', 'length_seconds')
     d['title'] = get_deep(j, 'content', 'video', 'title')
-
     d['likes'] = get_deep(vmc, 'like_button', 'like_count')
     d['dislikes'] = get_deep(vmc, 'like_button', 'dislike_count')
-    desc = []
-    for chunk in get_deep(vmc, 'description', 'runs'):
-        desc.append(chunk['text'])
-    d['desc'] = ''.join(desc)
-
     d['author'] = get_deep(swf, 'author')
     d['view_count'] = int(get_deep(swf, 'view_count'))
     d['thumbnail_small'] = get_deep(swf, 'iurlsd')
     d['thumbnail_big'] = get_deep(swf, 'iurl')
     d['avg_rating'] = float(get_deep(swf, 'avg_rating'))
+
+    # Description needs to be build because it comes in chunks, separated
+    # wherever there is a link inside (youtube really likes clicktracking).
+    desc = []
+    for chunk in get_deep(vmc, 'description', 'runs'):
+        desc.append(chunk['text'])
+    d['desc'] = ''.join(desc)
+
+    # Extract the streams. Youtube generally provides seperate video and
+    # audio files, and all of them are listed in the json.
     streams = []
     stream_info = get_deep(swf, 'adaptive_fmts')
     if not stream_info:
-        # This is necessary for videos which have only one format
+        # This is necessary for videos which have only one format (bad quality,
+        # low popularity).
         stream_info = get_deep(swf, 'url_encoded_fmt_stream_map')
     if not stream_info:
+        # This sometimes happens if a video is really new. In this case,
+        # only the DASH manifest can be used, but I won't bother with that yet.
         print('Error: couldnt get video streams.')
         return None
     for s in stream_info.split(','):
@@ -108,12 +101,19 @@ def get_metadata(url):
         if ',+' in codec:
             stream['type'] = 'audio+video'
         if 'quality_label' in stream:
+            # Works only for pure video streams
             stream['quality'] = stream['quality_label']
         elif 'bitrate' in stream:
+            # Works for pure audio streams
             stream['quality'] = stream['bitrate']
         try:
-            stream['quality_int'] = int(''.join([x for x in stream['quality'] if x.isdigit()]))
+            # Provide the quality additionally as an integer, too. Used
+            # for sorting. So '720p' and 'hd720' both become 720
+            stream['quality_int'] = int(''.join([x for x in stream['quality']
+                                                 if x.isdigit()]))
         except ValueError:
+            # Sometimes, for whatever reason, quality is called 'medium' or
+            # something like that.
             stream['quality_int'] = 0
         streams.append(stream)
     d['streams'] = streams
@@ -121,7 +121,14 @@ def get_metadata(url):
 
 
 def get_subtitles(url, lang):
-    parsed_url = urllib3.util.url.parse_url(url)
+    """ Get the subtitles for a video.
+
+    :param str url: the video url.
+    :param str lang: the target language, like 'en' or 'es'.
+    :return: the subtitles in srt (SubRip) format.
+    :rtype: str
+    """
+    parsed_url = parse_url(url)
     query_data = re.split('[=&]', parsed_url.query)
     query = dict(zip(query_data[::2], query_data[1::2]))
     fields = {'lang': lang, 'v': query['v']}
@@ -131,6 +138,8 @@ def get_subtitles(url, lang):
         return None
     tree = lxml.etree.fromstring(response.data)
     elements = tree.xpath('//text')
+
+    # Youtube uses an xml timedtext file which therefore needs to be converted.
     formatted = []
     for i, elem in enumerate(elements):
         formatted.append(str(i+1))
@@ -148,7 +157,14 @@ def get_subtitles(url, lang):
 
 
 def parse_userinput(raw):
-    parsed = urllib3.util.parse_url(raw)
+    """ Parse the userinput to determine what kind of method to use.
+    The user may have used a video url, a playlist url, a search query etc.
+
+    :param str raw: the url.
+    :return: the kind of page we are dealing with.
+    :rtype: str
+    """
+    parsed = parse_url(raw)
     if not parsed.scheme:
         return 'search_query'
     if parsed.path == '/playlist':
@@ -161,7 +177,7 @@ def parse_userinput(raw):
 
 
 def playlist(url, results=20):
-    parsed_url = urllib3.util.url.parse_url(url)
+    parsed_url = parse_url(url)
     fields_ = GET_PARAMS.copy()
     query_data = re.split('[=&]', parsed_url.query)
     query = dict(zip(query_data[::2], query_data[1::2]))
@@ -209,8 +225,10 @@ def playlist(url, results=20):
 def search(query, results=20):
     """ Perform a search and return the result.
 
-    :param query: the search query.
+    :param str query: the search query.
+    :param int results: the number of search results to return.
     :return: a list of dicts for the search result.
+    :rtype: list(dict)
     """
     if not query.strip():
         return []
